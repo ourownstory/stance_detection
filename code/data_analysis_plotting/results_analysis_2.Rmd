@@ -1,0 +1,639 @@
+---
+title: "Results FakeNewsChallenge"
+author: "Oskar Triebe"
+date: "March 18, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(stringr)
+library(forcats)
+# help(package = 'forcats')
+```
+
+## Options
+
+### Data
+```{r}
+path_res <- 'C:/Users/OurOwnStory/GitHub/altfactcheckers/xp/'
+results <- read_rds(str_c(path_res, 'results.rds')) 
+
+path_res_final <- 'C:/Users/OurOwnStory/GitHub/altfactcheckers/xp/final/'
+results_final <- read_rds(str_c(path_res_final, 'results_final.rds'))
+path_fig <- 'C:/Users/OurOwnStory/GitHub/altfactcheckers/Figures/ggplot2/'
+
+
+results <- results %>% 
+  filter(!downsample) %>% 
+  filter(trainable_embeddings == 'Variable')
+
+# name_model <- function(x){
+#   if (x == 'bow') {return('BOW')}
+#   if (x == 'basiclstm') {return('Basic LSTM')}
+#   if (x == 'attention') {return('Attention LSTM')}
+#   if (x == 'conditional') {return('CEA LSTM')}
+#   }
+
+model_names = c('BOW', 'Basic LSTM', 'Attention LSTM', 'CEA LSTM')
+results <- results %>%  
+  select(model:hidden_size, lr:n_classes, everything()) %>% 
+  mutate(model = factor(model, levels = model_names))  #%>%  
+  # mutate(
+  #   max_length = fct_rev(factor(max_length), levels = c(50, 75, 150, 200, 300, 600)),
+  #   n_layers = fct_rev(factor(n_layers), levels = c(1, 2, 4))
+  # )
+
+# same for final res
+results_final <- results_final %>%  
+  select(model:hidden_size, lr:n_classes, everything()) %>% 
+  mutate(model = factor(model, levels = model_names))
+
+## What we can analyze:
+params <- sapply(results %>% select(model:n_classes), unique)
+
+models <- 
+results %>% 
+  select(model:n_classes) %>% 
+  # filter(model == 'basiclstm') %>%
+  # filter(xp == 'base_150') %>%
+  distinct() %>% 
+  arrange(model, xp, trainable_embeddings, max_length, n_layers)
+
+hyperparams <- names(models)
+hyperparams_class <- c(hyperparams, 'class')
+
+### Max F1 score
+results <- 
+  results %>%
+  group_by_(.dots = hyperparams_class) %>% 
+  mutate(
+    competition_max = max(competition),
+    epoch_max_comp = epoch[which.max(competition)],
+    f1_max_comp = f1[which.max(competition)]
+    ) %>% 
+  ungroup()
+
+## Rename Stances to classes:
+results$class[results$class == 0] = 'Related: Agree'
+results$class[results$class == 1] = 'Related: Disagree'
+results$class[results$class == 2] = 'Related: Discuss'
+results$class[results$class == 3] = 'Unrelated'
+## same for final res
+results_final$class[results_final$class == 0] = 'Related: Agree'
+results_final$class[results_final$class == 1] = 'Related: Disagree'
+results_final$class[results_final$class == 2] = 'Related: Discuss'
+results_final$class[results_final$class == 3] = 'Unrelated'
+  
+```
+
+### Plotting
+
+```{r}
+## set theme light
+# theme_set(theme_light() + theme(panel.grid = element_blank()))
+theme_set(theme_light() + theme(panel.grid.major.x = element_blank(), 
+                                panel.grid.minor.x = element_blank()))
+## set theme dark
+# theme_set(theme_dark() + theme(panel.grid = element_blank()))
+# theme_set(theme_dark() + theme(panel.grid.major.x = element_blank(), 
+#                                panel.grid.minor.x = element_blank()))
+```
+
+```{r}
+breaks_max_length = c(75, 150, 300, 600)
+breaks_max_length_short = c(75, 150, 300)
+breaks_max_length_all = c(50, 75, 150, 300, 600)
+breaks_n_layers = c(1, 2, 4)
+```
+
+
+```{r}
+## plotting vars for Competition Scores
+comp_ylim = c(0.60, 0.80)
+comp_ylim_low = c(0.60, 0.75)
+comp_ylim_high = c(0.65, 0.80)
+comp_ylim_zoom = c(0.65, 0.75)
+comp_ylim_bow = c(0.40, 0.80)
+```
+
+```{r}
+## plotting vars for F1
+f1_ylim = c(0.30, 1.00)
+f1_ylim_low = c(0.60, 0.75)
+f1_ylim_high = c(0.65, 0.80)
+f1_ylim_zoom = c(0.65, 0.75)
+f1_ylim_bow = c(0.40, 0.80)
+```
+
+```{r}
+# trancation_labels <- c(
+#   30 = 
+```
+
+
+
+
+## Competition Score 
+
+```{r, fig.asp = 0.8}
+score_max_length <- 
+  results %>% 
+  filter(xp %in% c('max_length')) %>% 
+  filter(max_length != 50) %>% 
+  mutate(
+    max_length = str_c('Truncation: ', max_length),
+    max_length = factor(max_length, levels = str_c('Truncation: ', c(75, 150, 200, 300, 600)))
+  ) %>% 
+  ggplot(aes(x = epoch, color = model)) +
+  geom_line(aes(y = competition), size = 1) +
+  geom_point(
+    data = results %>% distinct_(.dots = c(hyperparams, 'epoch_max_comp', 'competition_max')) %>%
+              filter(xp %in% c('max_length')) %>% filter(max_length != 50) %>% 
+      mutate(max_length = str_c('Truncation: ', max_length),
+             max_length = factor(max_length, levels = str_c('Truncation: ', c(75, 150, 200, 300, 600)))), 
+    mapping = aes(x = epoch_max_comp, y = competition_max), size = 2, alpha = 0.6
+    ) +
+  coord_cartesian(ylim = comp_ylim) +
+  facet_wrap(~max_length, nrow = 1) + 
+  theme(legend.position = 'bottom', legend.text = element_text(size = 10)) +
+  labs(
+    title = 'Sensitivity of Competition Score to Sequence Truncation',
+    x = 'Epoch', y = 'Competition Score',
+    subtitle = 'BOW and CEA LSTM models perform best at shortest and longest truncation lengths. \nBasic LSTM and Attention LSTM models perform best at shortest truncation lengths.',
+    caption = 'Fitted on train set (60%) and evaluated on dev set (20%)'
+    ) +
+  guides(color = guide_legend(title = 'Model'))
+
+score_max_length
+
+ggsave(plot = score_max_length, filename = str_c('score_max_length', '.png'), 
+       width = 8, height = 6, dpi = 900, units = 'in',
+       path = path_fig, device = 'png')
+```
+
+
+```{r, fig.asp = 0.8}
+### For the report
+score_max_length <- 
+  results %>% 
+  filter(xp %in% c('max_length')) %>% 
+  filter(max_length != 50) %>% 
+  mutate(
+    max_length = str_c('Truncation: ', max_length),
+    max_length = factor(max_length, levels = str_c('Truncation: ', c(75, 150, 200, 300, 600)))
+  ) %>% 
+  ggplot(aes(x = epoch, color = model)) +
+  geom_line(aes(y = competition), size = 1) +
+  geom_point(
+    data = results %>% distinct_(.dots = c(hyperparams, 'epoch_max_comp', 'competition_max')) %>%
+              filter(xp %in% c('max_length')) %>% filter(max_length != 50) %>% 
+      mutate(max_length = str_c('Truncation: ', max_length),
+             max_length = factor(max_length, levels = str_c('Truncation: ', c(75, 150, 200, 300, 600)))), 
+    mapping = aes(x = epoch_max_comp, y = competition_max), size = 2, alpha = 0.6
+    ) +
+  coord_cartesian(ylim = comp_ylim) +
+  facet_wrap(~max_length, nrow = 1) + 
+  theme(legend.position = 'bottom', legend.text = element_text(size = 10),
+        title = element_blank()) +
+  labs(
+    title = 'Sensitivity of Competition Score to Sequence Truncation',
+    x = 'Epoch', y = 'Competition Score',
+    subtitle = 'BOW and CEA LSTM models perform best at shortest and longest truncation lengths. \nBasic LSTM and Attention LSTM models perform best at shortest truncation lengths.',
+    caption = 'Fitted on train set (60%) and evaluated on dev set (20%)'
+    ) +
+  guides(color = guide_legend(title = 'Model'))
+
+score_max_length
+
+ggsave(plot = score_max_length, filename = str_c('score_max_length_report', '.png'), 
+       width = 8, height = 4, dpi = 900, units = 'in',
+       path = path_fig, device = 'png')
+```
+
+
+
+```{r, fig.asp = 0.8}
+score_n_layers <- 
+  results %>% 
+  filter(xp %in% c('n_layers')) %>%  
+  mutate(
+    n_layers = str_c('Layers: ', n_layers),
+    n_layers = factor(n_layers, levels = str_c('Layers: ', c(1, 2, 4)))
+  ) %>% 
+  ggplot(aes(x = epoch, color = model)) +
+  geom_line(aes(y = competition),
+            size = 1) +
+  geom_point(
+    data = results %>% distinct_(.dots = c(hyperparams, 'epoch_max_comp', 'competition_max')) %>% 
+              filter(xp %in% c('n_layers')) %>% filter(max_length != 50) %>% 
+              mutate(n_layers = str_c('Layers: ', n_layers),
+                     n_layers = factor(n_layers, levels = str_c('Layers: ', c(1, 2, 4)))),
+    mapping = aes(x = epoch_max_comp, y = competition_max), size = 2, alpha = 0.6
+    ) +
+  coord_cartesian(ylim = comp_ylim) + # cuts off 1 layer BOW
+  facet_wrap(~n_layers, nrow = 1)  + 
+  theme(legend.position = 'bottom', legend.text = element_text(size = 10)) +
+  labs(
+    title = 'Sensitivity of Competition Score to Hidden Layers',
+    x = 'Epoch', y = 'Competition Score',
+    subtitle = 'Basic LSTM and CEA LSTM models perform best with 2 layers. \nBOW and Attention LSTM models perform best with more hidden layers.',
+    caption = 'Fitted on train set (60%) and evaluated on dev set (20%)'
+    ) +
+  guides(color = guide_legend(title = 'Model'))
+
+
+score_n_layers
+
+ggsave(plot = score_n_layers, filename = str_c('score_n_layers', '.png'), 
+       width = 6, height = 6, dpi = 900, units = 'in',
+       path = path_fig, device = 'png')
+```
+
+
+```{r, fig.asp = 0.8}
+### For Report
+score_n_layers <- 
+  results %>% 
+  filter(xp %in% c('n_layers')) %>%  
+  mutate(
+    n_layers = str_c('Layers: ', n_layers),
+    n_layers = factor(n_layers, levels = str_c('Layers: ', c(1, 2, 4)))
+  ) %>% 
+  ggplot(aes(x = epoch, color = model)) +
+  geom_line(aes(y = competition),
+            size = 1) +
+  geom_point(
+    data = results %>% distinct_(.dots = c(hyperparams, 'epoch_max_comp', 'competition_max')) %>% 
+              filter(xp %in% c('n_layers')) %>% filter(max_length != 50) %>% 
+              mutate(n_layers = str_c('Layers: ', n_layers),
+                     n_layers = factor(n_layers, levels = str_c('Layers: ', c(1, 2, 4)))),
+    mapping = aes(x = epoch_max_comp, y = competition_max), size = 2, alpha = 0.6
+    ) +
+  coord_cartesian(ylim = comp_ylim) + # cuts off 1 layer BOW
+  facet_wrap(~n_layers, nrow = 1)  + 
+  theme(legend.position = 'bottom', legend.text = element_text(size = 10),
+        title = element_blank()) +
+  labs(
+    title = 'Sensitivity of Competition Score to Hidden Layers',
+    x = 'Epoch', y = 'Competition Score',
+    subtitle = 'Basic LSTM and CEA LSTM models perform best with 2 layers. \nBOW and Attention LSTM models perform best with more hidden layers.',
+    caption = 'Fitted on train set (60%) and evaluated on dev set (20%)'
+    ) +
+  guides(color = guide_legend(title = 'Model'))
+
+
+score_n_layers
+
+ggsave(plot = score_n_layers, filename = str_c('score_n_layers_report', '.png'), 
+       width = 6, height = 4, dpi = 900, units = 'in',
+       path = path_fig, device = 'png')
+```
+
+
+
+## F1 Scores
+
+
+```{r, fig.asp = 0.8}
+f1_max_length <- 
+  results %>% 
+  filter(xp %in% c('max_length')) %>% 
+  filter(max_length != 50) %>%
+  # filter(max_length != 600) %>%
+  filter(epoch == epoch_max_comp) %>%
+  ggplot(aes(x = max_length, color = model)) +
+  geom_line(aes(y = f1), size = 1) +
+  geom_point(aes(y = f1), size = 2, alpha = 0.6) +
+  scale_x_continuous(trans = 'log2', breaks = breaks_max_length) + 
+  facet_wrap(~class, nrow = 1 
+             # ,scales = 'free_y'
+             ) + coord_cartesian(ylim = f1_ylim) +
+  theme(legend.position = 'bottom', legend.text = element_text(size = 10)) +
+  labs(
+    title = 'Sensitivity of Stance F1 Scores to Truncation Length',
+    x = 'Truncation Length', y = 'F1 Score',
+    # subtitle = 'Basic LSTM and CEA LSTM models perform best with 2 layers. \nBOW and Attention LSTM models perform best with more hidden layers.',
+    caption = 'Fitted on train set (60%) and evaluated on dev set (20%), shown for epoch with maximal competition score'
+    ) +
+  guides(color = guide_legend(title = 'Model'))
+
+
+f1_max_length
+
+ggsave(plot = f1_max_length, filename = str_c('f1_max_length', '.png'), 
+       width = 8, height = 6, dpi = 900, units = 'in',
+       path = path_fig, device = 'png')
+
+
+
+
+f1_max_length_report <- f1_max_length + theme(title = element_blank())
+
+ggsave(plot = f1_max_length_report, filename = str_c('f1_max_length_report', '.png'), 
+       width = 8, height = 4, dpi = 900, units = 'in',
+       path = path_fig, device = 'png')
+```
+
+```{r, fig.asp = 0.8}
+f1_n_layers <- 
+  results %>% 
+  filter(xp %in% c('n_layers')) %>% 
+  filter(epoch == epoch_max_comp) %>%
+  ggplot(aes(x = n_layers, color = model)) +
+  geom_line(aes(y = f1), size = 1) +
+  geom_point(aes(y = f1), size = 2, alpha = 0.6) +
+  scale_x_continuous(trans = 'log2', breaks = breaks_n_layers) +
+  facet_wrap(~class, nrow = 1 
+             # ,scales = 'free_y'
+             ) + coord_cartesian(ylim = f1_ylim) +
+  theme(legend.position = 'bottom', legend.text = element_text(size = 10)) +
+  labs(
+    title = 'Sensitivity of Stance F1 Scores to Hidden Layers',
+    x = 'Truncation Length', y = 'F1 Score',
+    # subtitle = 'Basic LSTM and CEA LSTM models perform best with 2 layers. \nBOW and Attention LSTM models perform best with more hidden layers.',
+    caption = 'Fitted on train set (60%) and evaluated on dev set (20%), shown for epoch with maximal competition score'
+    ) +
+  guides(color = guide_legend(title = 'Model'))
+
+
+
+f1_n_layers
+
+ggsave(plot = f1_n_layers, filename = str_c('f1_n_layers', '.png'), 
+       width = 8, height = 6, dpi = 900, units = 'in',
+       path = path_fig, device = 'png')
+
+
+f1_n_layers_report <- f1_n_layers + theme(title = element_blank())
+
+ggsave(plot = f1_n_layers_report, filename = str_c('f1_n_layers_report', '.png'), 
+       width = 8, height = 4, dpi = 900, units = 'in',
+       path = path_fig, device = 'png')
+```
+
+
+## Final Results
+
+```{r}
+### TABLE
+results_table_all <- 
+  results_final %>% 
+  filter(epoch == 40) %>% 
+  spread(key = class, value = f1) %>% 
+  group_by(model) %>% 
+  mutate(
+    f1_agree = sum(`Related: Agree`, na.rm = TRUE),
+    f1_disagree = sum(`Related: Disagree`, na.rm = TRUE),
+    f1_discuss = sum(`Related: Discuss`, na.rm = TRUE),
+    f1_unrelated = sum(`Unrelated`, na.rm = TRUE)
+    ) %>% 
+  select(-`Related: Agree`,-`Related: Disagree`, -`Related: Discuss`, -`Unrelated`) %>% 
+  select( -(fp:tn), -(specificity:accuracy), -xp) %>% 
+  select(model, everything())
+
+variables_results <- names(results_table_all)
+
+results_table_all <- 
+  results_table_all %>% 
+  distinct_(.dots = variables_results) 
+
+results_table_all <- 
+  results_table_all[,-ncol(results_table_all)] %>% 
+  mutate(max_length = if_else(model %in% c('BOW', 'CEA LSTM'), NA_integer_, max_length))
+
+results_table <- 
+  results_table_all %>% 
+  select(model, competition:f1_unrelated)
+  
+results_table %>% write_excel_csv(path = str_c(path_fig, 'results_table.csv'))
+
+hyperparam_table <- 
+  results_table_all %>% 
+  select(model:epoch)
+  
+hyperparam_table %>% write_excel_csv(path = str_c(path_fig, 'hyperparam_table.csv'))
+
+
+```
+
+
+```{r, fig.asp = 0.8}
+final_loss <- 
+  results_final %>% 
+  ggplot(aes(x = epoch, color = model)) +
+  geom_line(aes(y = train_loss),
+            size = 1) +
+  coord_cartesian(ylim = c(0, 0.5)) +
+  theme(legend.position = 'bottom', legend.text = element_text(size = 10)) +
+  labs(
+    title = 'Training Loss of Selected Models',
+    x = 'Epoch', y = 'Training Loss',
+    # subtitle = 'Basic LSTM and CEA LSTM models perform best with 2 layers. \nBOW and Attention LSTM models perform best with more hidden layers.',
+    caption = 'Fitted on train and dev set (80%) and evaluated on test set (20%)'
+    ) +
+  guides(color = guide_legend(title = 'Model'))
+
+final_loss
+
+ggsave(plot = final_loss, filename = str_c('final_loss', '.png'), 
+       width = 5, height = 5, dpi = 900, units = 'in',
+       path = path_fig, device = 'png')
+```
+
+```{r, fig.asp = 0.8}
+final_f1 <- 
+  results_final %>% 
+  filter(epoch == 40) %>% 
+  ggplot(aes(x = model, fill = model)) +
+  geom_col(aes(y = f1), size = 1) +
+  theme(legend.position = 'bottom', legend.text = element_text(size = 10),
+        axis.text.x = element_blank(), axis.ticks.x = element_blank(),
+        axis.title.x = element_blank()) +
+  facet_wrap(~class, nrow = 1) +
+  labs(
+    title = 'Stance F1 Scores of Selected Models',
+    x = 'Model', y = 'F1 Score',
+    # subtitle = 'Basic LSTM and CEA LSTM models perform best with 2 layers. \nBOW and Attention LSTM models perform best with more hidden layers.',
+    caption = 'Fitted on train and dev set (80%) and evaluated on test set (20%)'
+    ) +
+  guides(fill = guide_legend(title = 'Model'))
+
+final_f1
+
+ggsave(plot = final_f1, filename = str_c('final_f1', '.png'), 
+       width = 8, height = 6, dpi = 900, units = 'in',
+       path = path_fig, device = 'png')
+```
+
+```{r, fig.asp = 0.8}
+final_comp <- 
+  results_final %>% 
+  filter(epoch == 40) %>%
+  distinct(model, competition) %>% 
+  ggplot(aes(x = model, fill = model)) +
+  geom_col(aes(y = competition), size = 1) +
+  coord_cartesian(ylim = c(0.725, 0.825)) +
+
+  theme(legend.position = 'bottom', legend.text = element_text(size = 10),
+        axis.text.x = element_blank(), axis.ticks.x = element_blank(),
+        axis.title.x = element_blank()) +
+  # facet_wrap(~class, nrow = 1) +
+  labs(
+    title = 'Competition Scores of Selected Models',
+    x = 'Model', y = 'Competition Score',
+    # subtitle = 'Basic LSTM and CEA LSTM models perform best with 2 layers. \nBOW and Attention LSTM models perform best with more hidden layers.',
+    caption = 'Fitted on train and dev set (80%) and evaluated on test set (20%)'
+    ) +
+  guides(fill = guide_legend(title = 'Model'))
+
+final_comp
+
+ggsave(plot = final_comp, filename = str_c('final_comp', '.png'), 
+       width = 5, height = 5, dpi = 900, units = 'in',
+       path = path_fig, device = 'png')
+```
+
+
+```{r, fig.asp = 0.8}
+### DO NOT use this plot
+results_final %>% 
+  ggplot(aes(x = epoch, color = model)) +
+  geom_line(aes(y = competition),
+            size = 1) +
+  # coord_cartesian(ylim = comp_ylim) +
+  theme(legend.position = 'bottom', legend.text = element_text(size = 10)) +
+  labs(
+    title = 'Final Competition Scores of Selected Models',
+    x = 'Epoch', y = 'Competition Score',
+    # subtitle = 'Basic LSTM and CEA LSTM models perform best with 2 layers. \nBOW and Attention LSTM models perform best with more hidden layers.',
+    caption = 'Fitted on train and de set (80%) and evaluated on test set (20%)'
+    ) +
+  guides(color = guide_legend(title = 'Model'))
+```
+
+
+
+## Model Details
+
+### BOW - Competition Score 
+
+```{r}
+results %>% 
+  filter(model %in% c('BOW')) %>% 
+  ggplot(aes(x = epoch)) +
+  geom_line(aes(y = competition, 
+                # linetype = trainable_embeddings, 
+                color = factor(n_layers)),
+            size = 1) +
+  labs(title = 'BOW Competition Score: max_length, n_layers') +
+  facet_grid(~max_length)  + coord_cartesian(ylim = comp_ylim_bow)
+```
+
+```{r}
+results %>% 
+  filter(model %in% c('BOW')) %>% 
+
+  ggplot(aes(x = epoch)) +
+  geom_line(aes(y = competition, 
+                # linetype = trainable_embeddings, 
+                color = factor(max_length)),
+            size = 1) +
+  labs(title = 'BOW Competition Score: max_length, n_layers') +
+  facet_grid(~n_layers)  + coord_cartesian(ylim = comp_ylim_bow)
+```
+
+### Basic LSTM - Competition Score 
+
+```{r}
+results %>% 
+  filter(model %in% c('Basic LSTM'),
+         xp %in% c('max_length', 'n_layers')) %>% 
+  filter(max_length != 50) %>% 
+  ggplot(aes(x = epoch)) +
+  geom_line(aes(y = competition, 
+                # linetype = trainable_embeddings, 
+                color = factor(n_layers)),
+            size = 1) +
+  labs(title = 'Basic LSTM Competition Score: max_length, n_layers') +
+  facet_wrap(~max_length, nrow = 1)  + coord_cartesian(ylim = comp_ylim_zoom)
+```
+
+```{r}
+results %>% 
+  filter(model %in% c('Basic LSTM'),
+         xp %in% c('max_length', 'n_layers')) %>% 
+  filter(max_length != 50) %>% 
+  ggplot(aes(x = epoch)) +
+  geom_line(aes(y = competition, 
+                # linetype = trainable_embeddings, 
+                color = factor(max_length)),
+            size = 1) +
+  labs(title = 'Basic LSTM Competition Score: max_length, n_layers') +
+  facet_wrap(~n_layers, nrow = 1) + coord_cartesian(ylim = comp_ylim_zoom)
+```
+
+### Attention LSTM - Competition Score 
+
+
+```{r}
+results %>% 
+  filter(model %in% c('Attention LSTM'),
+         xp %in% c('max_length', 'n_layers')) %>% 
+  ggplot(aes(x = epoch)) +
+  geom_line(aes(y = competition, 
+                # linetype = trainable_embeddings, 
+                color = factor(n_layers)),
+            size = 1) +
+  labs(title = 'Attention LSTM Competition Score: max_length, n_layers') +
+  facet_wrap(~max_length, nrow = 1) + coord_cartesian(ylim = comp_ylim_high)
+```
+
+
+
+```{r}
+results %>% 
+  filter(model %in% c('Attention LSTM'),
+         xp %in% c('max_length', 'n_layers')) %>% 
+  ggplot(aes(x = epoch)) +
+  geom_line(aes(y = competition, 
+                # linetype = trainable_embeddings, 
+                color = factor(max_length)),
+            size = 1) +
+  labs(title = 'Attention LSTM Competition Score: max_length, n_layers') +
+  facet_wrap(~n_layers, nrow = 1)  + coord_cartesian(ylim = comp_ylim_high)
+```
+
+### Conditional LSTM - Competition Score 
+
+
+```{r}
+results %>% 
+  filter(model %in% c('CEA LSTM'),
+         xp %in% c('max_length', 'n_layers')) %>% 
+  ggplot(aes(x = epoch)) +
+  geom_line(aes(y = competition, 
+                # linetype = trainable_embeddings, 
+                color = factor(n_layers)),
+            size = 1) +
+  labs(title = 'Conditional LSTM Competition Score: max_length, n_layers') +
+  facet_wrap(~max_length, nrow = 1)  + coord_cartesian(ylim = comp_ylim_high)
+```
+
+
+```{r}
+results %>% 
+  filter(model %in% c('CEA LSTM'),
+         xp %in% c('max_length', 'n_layers')) %>% 
+  ggplot(aes(x = epoch)) +
+  geom_line(aes(y = competition, 
+                # linetype = trainable_embeddings, 
+                color = factor(max_length)),
+            size = 1) +
+  labs(title = 'Conditional LSTM Competition Score: max_length, n_layers') +
+  facet_wrap(~n_layers, nrow = 1)  + coord_cartesian(ylim = comp_ylim_high)
+```

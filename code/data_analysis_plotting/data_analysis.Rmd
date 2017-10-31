@@ -1,0 +1,454 @@
+---
+title: "FakeNewsChallenge"
+author: "Oskar Triebe"
+date: "February 3, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+library(stringr)
+library(modelr)
+```
+
+## Data Loading
+
+```{r}
+### Paths
+# url_train_bodies <-
+#   'https://raw.githubusercontent.com/FakeNewsChallenge/fnc-1/master/train_bodies.csv'
+# url_train_stances <-
+#   'https://raw.githubusercontent.com/FakeNewsChallenge/fnc-1/master/train_stances.csv'
+# url_train_stances.random <- 'https://raw.githubusercontent.com/FakeNewsChallenge/fnc-1/master/train_stances.random.csv'
+
+path_data <- 'C:/Users/OurOwnStory/Desktop/MyDrive/6_MSC/00_16-17 Winter/CS224n Natural Language Processing with Deep Learning/Project/R_Data/'
+path_fig <- 'C:/Users/OurOwnStory/GitHub/altfactcheckers/Figures/ggplot2/'
+```
+
+
+```{r}
+### save data
+# read_csv(
+#   url_train_bodies,
+#   col_names = TRUE,
+#   col_types = cols(
+#     `Body ID` = col_integer(),
+#     articleBody = col_character()
+#     )
+#   ) %>%
+#   rename(body_id = `Body ID`, 
+#          body = articleBody
+#          ) %>% 
+#   write_rds(str_c(path_data, 'bodies.rds'))
+# 
+# read_csv(
+#   url_train_stances,
+#   col_names = TRUE,
+#   col_types = cols(
+#     Headline = col_character(),
+#     `Body ID` = col_integer(),
+#     Stance = col_character())
+#    ) %>%
+#   rename(body_id = `Body ID`, 
+#          stance = Stance, 
+#          headline = Headline
+#          ) %>% 
+#   write_rds(str_c(path_data, 'stances.rds'))
+# 
+# read_csv(
+#   url_train_stances.random,
+#   col_names = TRUE,
+#   col_types = cols(
+#     Headline = col_character(),
+#     `Body ID` = col_integer(),
+#     Stance = col_character()
+#     )
+#   ) %>%
+#   rename(body_id = `Body ID`, 
+#          stance = Stance, 
+#          headline = Headline
+#          ) %>% 
+#   write_rds(str_c(path_data, 'stances_random.rds'))
+
+```
+
+```{r load data}
+bodies <- read_rds(str_c(path_data, 'bodies.rds'))
+stances <- read_rds(str_c(path_data, 'stances.rds'))
+stances_random <- read_rds(str_c(path_data, 'stances_random.rds'))
+
+data <- 
+  stances %>%
+  inner_join(bodies, by = 'body_id') %>% 
+  select(body_id, stance, body, headline) %>% 
+  arrange(body_id, stance, headline)
+
+## Remove doubles
+data <- 
+  data %>% 
+  distinct(body_id, stance, body, headline)
+
+## String lengths
+data <- 
+data %>%
+  mutate(h_len = map_int(headline, str_length),
+         b_len = map_int(body, str_length),
+         h_words = map_int(headline, str_count, pattern = '[^\\w]+'),
+         b_words = map_int(body, str_count, pattern = '[^\\w]+')) 
+```
+
+## Data Distribution
+
+
+```{r}
+bodies_unique <- 
+  bodies %>% 
+  distinct(body) #%>% left_join(bodies, by = 'articleBody')
+
+stances_unique <- 
+  stances %>% 
+  distinct(headline) #%>% left_join(stances, by = 'Headline')
+
+n_bodies <- 
+  (bodies %>% nrow())
+n_bodies_unique <- 
+  (bodies_unique %>% nrow()) 
+
+n_stances_unique <- 
+  (stances_unique %>% nrow())
+n_stances <- 
+  (stances %>% nrow())
+
+n_data <- 
+  data %>%  nrow()
+
+n_data_distinct <- 
+  data %>% 
+  distinct(body_id, headline, stance) %>% nrow()
+
+n_data_double <- 
+  n_data - n_data_distinct
+
+prop_bodies_unique <- 
+  n_bodies_unique / n_bodies
+prop_stances_unique <- 
+  n_stances_unique / n_stances
+
+```
+
+
+```{r}
+str_c('Propp of unique bodies: ', prop_bodies_unique)
+
+str_c('Propp of unique headlines: ', prop_stances_unique)
+```
+
+
+
+
+```{r}
+# Check doubles
+data %>% 
+  count(body_id, headline) %>% filter(n > 1)
+
+#Check match
+stances %>%
+  anti_join(bodies, by = 'body_id')
+
+#Check unique id
+bodies %>% count(body_id) %>% filter(n > 1)
+
+## 402 double entries
+headline_double <- 
+  stances %>% 
+  count(body_id, headline, stance) %>% 
+  filter(n > 1) 
+
+n_data_double == headline_double %>% nrow()
+
+```
+
+
+
+```{r}
+data %>% count(stance) %>% mutate(prop = n / n_data)
+```
+
+
+## Lengths of bodies and headlines
+
+```{r}
+print(str_c('Median headline words: ', median(data$h_words)))
+summary(data$h_words)
+print(str_c('Median body words: ', median(data$b_words)))
+summary(data$b_words)
+```
+
+
+```{r}
+head_distr <- 
+  data %>% 
+  ggplot() +
+  geom_ref_line(v = median(data$h_words), 
+                colour = 'grey70') +
+  geom_histogram(aes(h_words), binwidth = 1) +
+  labs(title = 'Article Headline Length Distribution',
+       subtitle = 'The median headline has 10 words (first quartile 8, thrid quartile 13, minimum 1, maximum 40).',
+       x = 'Number of Words', y = 'Count',
+       caption = 'based on full dataset fnc-1 from FakeNewsChallenge.org')
+head_distr
+ggsave(plot = head_distr, filename = str_c('head_distr', '.png'), 
+       width = 7, height = 3, dpi = 900, units = 'in',
+       path = path_fig, device = 'png')
+```
+
+```{r}
+body_distr <- 
+  data %>% 
+  ggplot() +
+  geom_ref_line(v = median(data$b_words), 
+                colour = 'grey70') +
+  geom_histogram(aes(b_words), binwidth = 50) +
+  scale_x_continuous(limits = c(-100, 2500)) +
+  labs(title = 'Article Body Length Distribution',
+       subtitle = 'The body headline has 315 words (first quartile 206, thrid quartile 477, minimum 3, maximum 4937).',
+       x = 'Number of Words', y = 'Count',
+       caption = 'based on full dataset fnc-1 from FakeNewsChallenge.org')
+body_distr
+ggsave(plot = body_distr, filename = 'body_distr.png', 
+       width = 7, height = 3, dpi = 900, units = 'in',
+       path = path_fig, device = 'png')
+```
+
+
+
+
+## Distribution among bodies and headlines
+
+```{r}
+# Distribution of stances among bodies
+distr_body_stance <- 
+  data %>%
+  group_by(body_id) %>% 
+  count(stance) %>% 
+  spread(key = stance, value = n, fill = 0) %>% 
+  gather(key = stance, value = n, c(agree, disagree, discuss, unrelated)) %>% 
+  mutate(prop = n / sum(n))
+
+# Distribution of stances among headlines
+distr_headline_stance <- 
+  data %>%
+  group_by(headline) %>% 
+  count(stance) %>% 
+  spread(key = stance, value = n, fill = 0) %>% 
+  gather(key = stance, value = n, c(agree, disagree, discuss, unrelated)) %>% 
+  mutate(prop = n / sum(n))
+
+# Number of uses of each body
+distr_body <- 
+  distr_body_stance %>% 
+  group_by(body_id) %>% 
+  count(wt = n)
+
+# Number of uses of each headline
+distr_headline <- distr_headline_stance %>% 
+  group_by(headline) %>% 
+  count(wt = n)
+```
+
+```{r, fig.asp=0.5, warning = FALSE}
+# Number of uses of each body
+distr_body %>%  
+  ggplot(aes(nn)) +
+  # geom_histogram(binwidth = 2) +
+  geom_freqpoly(binwidth = 2, color = 'black', size = 0.5) +
+  # stat_ecdf() +
+  theme_minimal()
+
+# Number of uses of each headline
+distr_headline %>% 
+  ggplot(aes(nn)) +
+  # geom_histogram(binwidth = 2) +
+  geom_freqpoly(binwidth = 2, color = 'black', size = 0.5) +
+  # stat_ecdf() +
+  theme_minimal()
+
+# Number of uses of each body and headline
+distr_body %>% 
+  ggplot(aes(nn)) +
+  # geom_histogram(binwidth = 2) +
+  # geom_freqpoly(binwidth = 2, color = 'black', size = 0.5) +
+  stat_ecdf(color = 'red', size = 1) +
+  stat_ecdf(data = distr_headline, size = 1) +
+  theme_minimal()
+```
+
+
+```{r, fig.asp=1/2, warning = FALSE}
+# HIST Distribution of stances among bodies
+
+# distr_body_stance %>% 
+#   ggplot(aes(n)) +
+#   geom_histogram(binwidth = 1) +
+#   # geom_freqpoly(binwidth = 1, color = 'blue') +
+#   facet_wrap(~stance, nrow = 1)
+# 
+# distr_body_stance %>% 
+#   ggplot(aes(prop)) +
+#   geom_histogram(binwidth = 0.02) +
+#   # geom_freqpoly(binwidth = 0.01, color = 'blue') +
+#   facet_wrap(~stance, nrow = 1) 
+# 
+# ## log 
+# distr_body_stance %>% 
+#   ggplot(aes(n)) +
+#   geom_histogram(binwidth = 1) +
+#   # geom_freqpoly(binwidth = 1, color = 'blue') +
+#   facet_wrap(~stance, nrow = 1) +
+#   scale_y_log10()
+# 
+# distr_body_stance %>% 
+#   ggplot(aes(prop)) +
+#   geom_histogram(binwidth = 0.02) +
+#   # geom_freqpoly(binwidth = 0.01, color = 'blue') +
+#   facet_wrap(~stance, nrow = 1) +
+#   scale_y_log10()
+  
+```
+
+
+
+```{r, fig.asp=1/2, warning = FALSE}
+## ECDF Distribution of stances among bodies
+distr_body_stance %>% 
+  ggplot(aes(n, color = stance)) +
+  stat_ecdf(size = 1) +
+  theme_minimal()
+
+distr_body_stance %>% 
+  ggplot(aes(prop,color = stance)) +
+  stat_ecdf(size = 1) +
+  theme_minimal()
+
+## FREQPOLY Distribution of stances among bodies
+distr_body_stance %>% 
+  ggplot(aes(n)) +
+  geom_freqpoly(binwidth = 3, color = 'black', size = 0.5) +
+  facet_wrap(~stance, nrow = 1) +
+  theme_minimal()
+
+distr_body_stance %>% 
+  ggplot(aes(prop)) +
+  geom_freqpoly(binwidth = 0.04, color = 'black') +
+  facet_wrap(~stance, nrow = 1) +
+  theme_minimal()
+
+## log
+# distr_body_stance %>% 
+#   ggplot(aes(n)) +
+#   geom_freqpoly(binwidth = 5, color = 'blue') +
+#   facet_wrap(~stance, nrow = 1) +
+#   scale_y_log10()
+# 
+# distr_body_stance %>% 
+#   ggplot(aes(prop)) +
+#   geom_freqpoly(binwidth = 0.05, color = 'blue') +
+#   facet_wrap(~stance, nrow = 1)  +
+#   scale_y_log10()
+
+```
+
+
+```{r, fig.asp=1/2, warning = FALSE}
+## ECDF Distribution of stances among bodies
+distr_headline_stance %>% 
+  ggplot(aes(n, color = stance)) +
+  stat_ecdf(size = 1) +
+  theme_minimal()
+
+distr_headline_stance %>% 
+  ggplot(aes(prop,color = stance)) +
+  stat_ecdf(size = 1) +
+  theme_minimal()
+
+
+## FREQPOLY Distribution of stances among stances
+distr_headline_stance %>% 
+  ggplot(aes(n)) +
+  geom_freqpoly(binwidth = 3, color = 'black', size = 0.5) +
+  facet_wrap(~stance, nrow = 1) +
+  theme_minimal()
+
+distr_headline_stance %>% 
+  ggplot(aes(prop)) +
+  geom_freqpoly(binwidth = 0.03, color = 'black') +
+  facet_wrap(~stance, nrow = 1) +
+  theme_minimal()
+
+## log
+# distr_headline_stance %>% 
+#   ggplot(aes(n)) +
+#   geom_freqpoly(binwidth = 5, color = 'blue') +
+#   facet_wrap(~stance, nrow = 1) +
+#   scale_y_log10()
+# 
+# distr_headline_stance %>% 
+#   ggplot(aes(prop)) +
+#   geom_freqpoly(binwidth = 0.05, color = 'blue') +
+#   facet_wrap(~stance, nrow = 1)  +
+#   scale_y_log10()
+
+```
+
+
+## Conclusions
+
+* Headlines always have at least one body pair that is unrelated.
+
+
+
+## Better Data management
+
+
+```{r}
+headers_new <- 
+  stances_unique %>% 
+  mutate(h_id = row_number(),
+         h_words = map_int(headline, str_count, pattern = '[^\\w]+'))
+
+bodies_new <- 
+  bodies_unique %>% 
+  mutate(b_id = row_number(),
+         b_words = map_int(body, str_count, pattern = '[^\\w]+')) 
+
+
+data_new <- 
+  data %>% 
+  select(stance, headline, body) %>% 
+  left_join(headers_new, by = 'headline') %>% 
+  left_join(bodies_new, by = 'body')
+
+## Check
+# data_new %>% 
+#   anti_join(data)
+
+data_new <- 
+  data_new %>% 
+  select(stance, h_id, b_id)
+  
+```
+
+
+```{r}
+## Test naive splitting bleedover
+data_new_random <- sample.int(n = (data_new %>% nrow()), size = 10)
+
+
+## Test Random headline splitting bleedover
+```
+
+

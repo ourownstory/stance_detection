@@ -1,0 +1,194 @@
+---
+title: "Results FakeNewsChallenge"
+author: "Oskar Triebe"
+date: "March 18, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(stringr)
+library(forcats)
+# help(package = 'forcats')
+```
+
+
+## Plots
+
+```{r}
+  # mutate(
+  #   max_length = fct_rev(factor(max_length)),
+  #   n_layers = fct_rev(factor(n_layers))
+  # )
+```
+
+
+### Train Loss
+
+```{r}
+# results %>% 
+#   filter(!downsample) %>% 
+#   filter(xp == 'max_length') %>% 
+#   ggplot(aes(x = epoch)) +
+#   geom_line(aes(y = train_loss, color = max_length),
+#             size = 1) +
+#   labs(title = 'No Downsampling max_length')
+
+# title = str_c('XP: ', xp, ', downsampled: ', downsample) 
+```
+
+```{r}
+# results %>% 
+#   filter(downsample) %>% 
+#   filter(xp == 'max_length') %>% 
+#   ggplot(aes(x = epoch)) +
+#   geom_line(aes(y = train_loss, color = max_length),
+#             size = 1)  +
+#   labs(title = 'With Downsampling max_length')
+```
+
+```{r}
+# results %>% 
+#   filter(!downsample) %>% 
+#   filter(xp == 'n_layers') %>% 
+#   ggplot(aes(x = epoch)) +
+#   geom_line(aes(y = train_loss, color = n_layers),
+#             size = 1) +
+#   labs(title = 'No Downsampling n_layers')
+```
+
+```{r}
+# results %>% 
+#   filter(downsample) %>% 
+#   filter(xp == 'n_layers') %>% 
+#   ggplot(aes(x = epoch)) +
+#   geom_line(aes(y = train_loss, color = n_layers),
+#             size = 1)  +
+#   labs(title = 'With Downsampling n_layers')
+```
+
+
+```{r}
+results %>% 
+  # filter(!downsample) %>% 
+  filter(xp == 'max_length') %>% 
+  ggplot(aes(x = epoch)) +
+  geom_line(aes(y = train_loss, color = max_length),
+            size = 1) +
+  labs(title = 'Train Loss: max_length, downsample') +
+  facet_wrap(~downsample) +
+  coord_cartesian(ylim = c(0.0, 0.8))
+```
+
+```{r}
+results %>% 
+  # filter(downsample) %>% 
+  filter(xp == 'n_layers') %>% 
+  ggplot(aes(x = epoch)) +
+  geom_line(aes(y = train_loss, color = n_layers),
+            size = 1)  +
+  labs(title = 'Train Loss: n_layers, downsample') +
+  facet_wrap(~downsample) +
+  coord_cartesian(ylim = c(0.0, 0.8))
+```
+
+### Competition Score
+
+
+```{r}
+results %>% 
+  filter(xp == 'max_length') %>% 
+  mutate(
+    max_length = fct_rev(max_length),
+    n_layers = fct_rev(n_layers)) %>% 
+  ggplot(aes(x = epoch)) +
+  geom_line(aes(y = competition, color = max_length),
+            size = 1) +
+  labs(title = 'Competition Score: max_length, downsample') +
+  facet_wrap(~downsample) +
+  coord_cartesian(ylim = c(0.45, 0.75))
+```
+
+```{r}
+results %>% 
+  filter(xp == 'n_layers') %>% 
+  mutate(
+    max_length = fct_rev(max_length),
+    n_layers = fct_rev(n_layers)) %>% 
+  ggplot(aes(x = epoch)) +
+  geom_line(aes(y = competition, color = n_layers),
+            size = 1)  +
+  labs(title = 'Competition Score: n_layers, downsample') +
+  facet_wrap(~downsample) +
+  coord_cartesian(ylim = c(0.45, 0.75))
+```
+
+
+### F1 for each Stance
+
+```{r, fig.asp = 1}
+results %>% 
+  filter(xp == 'n_layers') %>% 
+  mutate(max_length = fct_rev(max_length),
+         n_layers = fct_rev(n_layers)) %>%
+  ggplot(aes(x = epoch)) +
+  geom_line(aes(y = f1, color = n_layers),
+            size = 1)  +
+  labs(title = 'F1: n_layers, stance, downsample') +
+  facet_grid(class~downsample, scales = 'free') 
+  # facet_grid(downsample~class, scales = 'free') 
+```
+
+
+```{r, fig.asp = 1}
+results %>% 
+  filter(xp == 'n_layers') %>% 
+  # mutate(max_length = fct_rev(max_length),
+  #        n_layers = fct_rev(n_layers)) %>% 
+  ggplot(aes(x = epoch)) +
+  geom_line(aes(y = f1, color = downsample),
+            size = 1)  +
+  labs(title = 'F1: n_layers, stance, downsample') +
+  facet_grid(class~n_layers) 
+  # coord_cartesian(ylim = c(0.45, 0.75))
+```
+
+
+
+
+
+
+```{r, fig.asp = 1}
+results %>% 
+  filter(xp == 'max_length') %>% 
+  mutate(max_length = fct_rev(max_length)) %>%
+  ggplot(aes(x = epoch)) +
+  geom_line(aes(y = f1, color = max_length),
+            size = 1)  +
+  labs(title = 'F1: max_length, stance, downsample') +
+  facet_grid(class~downsample, scales = 'free') 
+  # facet_grid(downsample~class, scales = 'free') 
+```
+
+
+```{r, fig.asp = 1}
+results %>% 
+  filter(xp == 'max_length') %>% 
+  mutate(max_length = fct_rev(max_length)) %>%
+  ggplot(aes(x = epoch)) +
+  geom_line(aes(y = f1, color = downsample),
+            size = 1)  +
+  labs(title = 'F1: max_length, stance, downsample') +
+  facet_grid(class~max_length) 
+  # coord_cartesian(ylim = c(0.45, 0.75))
+```
+
+
+
+
+
+
